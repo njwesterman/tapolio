@@ -1,0 +1,131 @@
+/* Landing Page Animations and Hover Effects */
+
+/* Hero Section Animation */
+.hero-section {
+  animation: fadeInUp 0.8s ease-out;
+}
+
+.hero-logo {
+  animation: fadeInScale 1s ease-out;
+}
+
+/* Feature Cards Hover Effect */
+.feature-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+.feature-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Topic Pills Hover Effect */
+.topic-pill {
+  transition: all 0.3s ease;
+}
+
+.topic-pill:hover {
+  background: #0066cc !important;
+  border: 1px solid #0066cc !important;
+  color: #ffffff !important;
+  transform: translateY(-2px);
+}
+
+/* CTA Buttons Hover Effect */
+.cta-button {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  
+}
+
+.cta-button:hover {
+  transform: translateY(-2px);
+ 
+}
+
+.cta-button-green {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.cta-button-green:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4) !important;
+}
+
+/* Social Links Hover */
+.social-link:hover {
+  opacity: 1 !important;
+  transform: scale(1.1);
+}
+
+/* Footer Links Hover */
+.footer-link {
+  transition: opacity 0.2s ease;
+}
+
+.footer-link:hover {
+  opacity: 1 !important;
+  text-decoration: underline !important;
+}
+
+/* Keyframe Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Remove Ionic Button Shadow/Border */
+.cta-button::part(native),
+.cta-button-green::part(native) {
+  box-shadow: none !important;
+  border: none !important;
+}
+
+ion-button {
+  --box-shadow: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .hero-section h1 {
+    font-size: 2.5rem !important;
+  }
+  
+  .hero-section p {
+    font-size: 1.1rem !important;
+  }
+}

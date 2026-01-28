@@ -102,3 +102,19 @@ export async function submitAnswer(sessionId: string, answer: string): Promise<I
 
   return res.json();
 }
+
+export async function getHint(sessionId: string): Promise<{ hint: string }> {
+  const res = await fetch(`${API_BASE_URL}/interview/hint`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ sessionId }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to get hint: ${res.status}`);
+  }
+
+  return res.json();
+}

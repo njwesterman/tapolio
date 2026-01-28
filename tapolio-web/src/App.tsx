@@ -11,6 +11,7 @@ import {
 } from "@ionic/react";
 import { IonReactRouter } from "@ionic/react-router";
 import { chatbubbles, school } from "ionicons/icons";
+import Landing from "./pages/Landing";
 import Home from "./pages/Home";
 import InterviewQuiz from "./pages/InterviewQuiz";
 
@@ -32,41 +33,51 @@ setupIonicReact();
 const App: React.FC = () => (
   <IonApp>
     <IonReactRouter>
-      <IonTabs>
-        <IonRouterOutlet>
-          <Route exact path="/copilot">
-            <Home />
-          </Route>
-          <Route exact path="/quiz">
-            <InterviewQuiz />
-          </Route>
-          <Route exact path="/">
-            <Redirect to="/copilot" />
-          </Route>
-        </IonRouterOutlet>
-        <IonTabBar slot="bottom" style={{
-          background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-          borderTop: "2px solid #667eea",
-          "--background": "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-          "--color": "#a8dadc",
-          "--color-selected": "#6df76d",
-        }}>
-          <IonTabButton tab="copilot" href="/copilot" style={{
-            "--color": "#a8dadc",
-            "--color-selected": "#6df76d",
-          }}>
-            <IonIcon icon={chatbubbles} />
-            <IonLabel>Live Copilot</IonLabel>
-          </IonTabButton>
-          <IonTabButton tab="quiz" href="/quiz" style={{
-            "--color": "#a8dadc",
-            "--color-selected": "#6df76d",
-          }}>
-            <IonIcon icon={school} />
-            <IonLabel>Live Quiz</IonLabel>
-          </IonTabButton>
-        </IonTabBar>
-      </IonTabs>
+      <IonRouterOutlet>
+        {/* Landing Page */}
+        <Route exact path="/">
+          <Landing />
+        </Route>
+        
+        {/* App with Tabs */}
+        <Route path="/app">
+          <IonTabs>
+            <IonRouterOutlet>
+              <Route exact path="/app/copilot">
+                <Home />
+              </Route>
+              <Route exact path="/app/quiz">
+                <InterviewQuiz />
+              </Route>
+              <Route exact path="/app">
+                <Redirect to="/app/copilot" />
+              </Route>
+            </IonRouterOutlet>
+            <IonTabBar slot="bottom" style={{
+              background: "#ffffff",
+              borderTop: "1px solid #e0e0e0",
+              "--background": "#ffffff",
+              "--color": "#666666",
+              "--color-selected": "#0066cc",
+            }}>
+              <IonTabButton tab="copilot" href="/app/copilot" style={{
+                "--color": "#666666",
+                "--color-selected": "#0066cc",
+              }}>
+                <IonIcon icon={chatbubbles} />
+                <IonLabel>Live Copilot</IonLabel>
+              </IonTabButton>
+              <IonTabButton tab="quiz" href="/app/quiz" style={{
+                "--color": "#666666",
+                "--color-selected": "#0066cc",
+              }}>
+                <IonIcon icon={school} />
+                <IonLabel>Live Quiz</IonLabel>
+              </IonTabButton>
+            </IonTabBar>
+          </IonTabs>
+        </Route>
+      </IonRouterOutlet>
     </IonReactRouter>
   </IonApp>
 );

@@ -9,24 +9,25 @@ import {
   IonSpinner,
   IonTitle,
   IonToolbar,
+  useIonViewWillLeave,
 } from "@ionic/react";
 
 import { mic, micOff, refresh } from "ionicons/icons";
 import { useCallback, useState } from "react";
+import { useHistory } from "react-router-dom";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { fetchSuggestion, resetConversation } from "../services/api";
 
-const MIN_CHARS_BEFORE_SUGGEST = 10;          // lower, since we're doing questions
+const MIN_CHARS_BEFORE_SUGGEST = 10;
 const SUGGEST_DEBOUNCE_MS = 1200;
 
 let debounceTimer: number | undefined;
 
 const Home: React.FC = () => {
+  const history = useHistory();
   const [suggestion, setSuggestion] = useState<string>("");
   const [loadingSuggestion, setLoadingSuggestion] = useState<boolean>(false);
   const [apiError, setApiError] = useState<string | null>(null);
-
-  // NEW: conversation history from server
   const [conversation, setConversation] = useState<
     { question: string; answer: string }[]
   >([]);
@@ -51,12 +52,10 @@ const Home: React.FC = () => {
         const res = await fetchSuggestion(text);
         console.log("📥 Received from API:", res);
 
-        // server now returns { suggestion, conversation }
         if (typeof res.suggestion === "string") {
           setSuggestion(res.suggestion);
           console.log("💬 Answer:", res.suggestion);
           
-          // Reset transcript after successful question processing
           if (res.suggestion && res.suggestion !== "") {
             console.log("🔄 Resetting transcript after answer");
             resetTranscript();
@@ -90,6 +89,13 @@ const Home: React.FC = () => {
     onFinalChunk: handleFinalTranscript,
   });
 
+  // Stop listening when leaving this tab
+  useIonViewWillLeave(() => {
+    if (isListening) {
+      stopListening();
+    }
+  });
+
   const handleReset = () => {
     resetTranscript();
     setSuggestion("");
@@ -109,47 +115,56 @@ const Home: React.FC = () => {
 
   return (
     <IonPage>
-      <IonHeader>
-        <IonToolbar style={{ 
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          borderBottom: "2px solid #6df76d",
-          "--background": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          "--color": "#fff",
-        }}>
-          <IonTitle style={{ 
-            fontWeight: "bold",
-            textShadow: "0 0 10px rgba(109, 247, 109, 0.5)",
-            color: "#fff",
-          }}>
-            ⚡ Tapolio · Live Copilot
-          </IonTitle>
-        </IonToolbar>
-      </IonHeader>
-
       <IonContent className="ion-padding" style={{
-        background: "linear-gradient(180deg, #0f0c29 0%, #302b63 50%, #24243e 100%)",
-        "--background": "transparent"
+        background: "#f5f5f5",
+        "--background": "#f5f5f5"
       }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        {/* Logo */}
+        <div style={{ 
+          textAlign: "center", 
+          paddingTop: "2rem",
+          paddingBottom: "1rem"
+        }}>
+          <img 
+            src="/tapolio_logo.png" 
+            alt="Tapolio" 
+            onClick={() => history.push("/")}
+            style={{
+              width: "180px",
+              height: "auto",
+              cursor: "pointer",
+            }}
+          />
+          <h1 style={{
+            color: "#333333",
+            fontSize: "2rem",
+            fontWeight: "600",
+            marginTop: "1rem",
+            marginBottom: "0"
+          }}>
+            Live Copilot
+          </h1>
+        </div>
         {!isSupported && (
           <IonCard style={{
-            background: "linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)",
-            border: "1px solid #ff6b6b",
-            boxShadow: "0 0 20px rgba(231, 76, 60, 0.3)"
+            background: "#ffffff",
+            border: "1px solid #dc3545",
+            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)"
           }}>
-            <IonCardContent style={{ color: "#fff" }}>
-              Your browser doesn&apos;t support Speech Recognition. Try Chrome
-              or Edge. Or just scream into the void, up to you.
+            <IonCardContent style={{ color: "#dc3545" }}>
+              Your browser doesn&apos;t support Speech Recognition. Try Chrome or Edge.
             </IonCardContent>
           </IonCard>
         )}
 
         {speechError && (
           <IonCard style={{
-            background: "linear-gradient(135deg, #f39c12 0%, #e67e22 100%)",
-            border: "1px solid #ffa502",
-            boxShadow: "0 0 20px rgba(243, 156, 18, 0.3)"
+            background: "#fff3cd",
+            border: "1px solid #ffc107",
+            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)"
           }}>
-            <IonCardContent style={{ color: "#fff" }}>
+            <IonCardContent style={{ color: "#856404" }}>
               Speech error: {speechError}
             </IonCardContent>
           </IonCard>
@@ -157,11 +172,11 @@ const Home: React.FC = () => {
 
         {apiError && (
           <IonCard style={{
-            background: "linear-gradient(135deg, #f39c12 0%, #e67e22 100%)",
-            border: "1px solid #ffa502",
-            boxShadow: "0 0 20px rgba(243, 156, 18, 0.3)"
+            background: "#fff3cd",
+            border: "1px solid #ffc107",
+            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)"
           }}>
-            <IonCardContent style={{ color: "#fff" }}>
+            <IonCardContent style={{ color: "#856404" }}>
               AI error: {apiError}
             </IonCardContent>
           </IonCard>
@@ -169,9 +184,9 @@ const Home: React.FC = () => {
 
         {/* Controls */}
         <IonCard style={{
-          background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-          border: "1px solid #4a90e2",
-          boxShadow: "0 0 30px rgba(74, 144, 226, 0.2)"
+          background: "#ffffff",
+          border: "1px solid #dee2e6",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)"
         }}>
           <IonCardContent>
             <div
@@ -184,14 +199,11 @@ const Home: React.FC = () => {
             >
               <IonButton
                 style={{
-                  background: isListening 
-                    ? "linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)"
-                    : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                  fontWeight: "bold",
-                  boxShadow: isListening 
-                    ? "0 0 20px rgba(255, 107, 107, 0.5)"
-                    : "0 0 20px rgba(102, 126, 234, 0.5)",
-                  border: "none"
+                  "--background": isListening ? "#dc3545" : "#0066cc",
+                  "--background-hover": isListening ? "#c82333" : "#0052a3",
+                  "--color": "#ffffff",
+                  fontWeight: "600",
+                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)"
                 }}
                 onClick={isListening ? stopListening : startListening}
                 disabled={!isSupported}
@@ -202,10 +214,11 @@ const Home: React.FC = () => {
 
               <IonButton
                 style={{
-                  background: "linear-gradient(135deg, #434343 0%, #000000 100%)",
-                  fontWeight: "bold",
-                  border: "1px solid #666",
-                  boxShadow: "0 0 10px rgba(0, 0, 0, 0.5)"
+                  "--background": "#6c757d",
+                  "--background-hover": "#5a6268",
+                  "--color": "#ffffff",
+                  fontWeight: "600",
+                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)"
                 }}
                 onClick={handleReset}
                 disabled={!transcript && !suggestion && conversation.length === 0}
@@ -219,34 +232,33 @@ const Home: React.FC = () => {
 
         {/* Transcript */}
         <IonCard style={{
-          background: "linear-gradient(135deg, #2c3e50 0%, #34495e 100%)",
-          border: "1px solid #52c7f2",
-          boxShadow: "0 0 30px rgba(82, 199, 242, 0.2)"
+          background: "#ffffff",
+          border: "1px solid #dee2e6",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)"
         }}>
           <IonCardContent>
             <h2 style={{ 
-              color: "#52c7f2",
-              textShadow: "0 0 10px rgba(82, 199, 242, 0.5)",
-              fontWeight: "bold",
-              marginBottom: "1rem"
+              color: "#333333",
+              fontWeight: "600",
+              marginBottom: "1rem",
+              fontSize: "1.2rem"
             }}>
               🎤 Transcript
             </h2>
             <div
               style={{
-                border: "2px solid #52c7f2",
                 borderRadius: 8,
                 padding: "0.75rem",
                 minHeight: 120,
                 fontSize: "0.9rem",
                 whiteSpace: "pre-wrap",
-                background: "rgba(0, 0, 0, 0.3)",
-                color: "#e0e0e0",
-                boxShadow: "inset 0 0 15px rgba(82, 199, 242, 0.1)"
+                background: "#e9ecef",
+                color: "#212529",
+                fontFamily: "monospace",
               }}
             >
               {transcript || (
-                <span style={{ opacity: 0.6, color: "#52c7f2" }}>
+                <span style={{ opacity: 0.6, color: "#6c757d" }}>
                   Start talking and Tapolio will keep track.
                 </span>
               )}
@@ -256,30 +268,30 @@ const Home: React.FC = () => {
 
         {/* Live suggestion */}
         <IonCard style={{
-          background: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)",
-          border: "2px solid #6df76d",
-          boxShadow: "0 0 40px rgba(109, 247, 109, 0.4)"
+          background: "#ffffff",
+          border: "2px solid #28a745",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)"
         }}>
           <IonCardContent>
             <h2 style={{ 
-              color: "#6df76d",
-              textShadow: "0 0 15px rgba(109, 247, 109, 0.8)",
-              fontWeight: "bold",
-              marginBottom: "1rem"
+              color: "#333333",
+              fontWeight: "600",
+              marginBottom: "1rem",
+              fontSize: "1.2rem"
             }}>
               🤖 AI Suggestion
             </h2>
 
             <div
               style={{
-                background: "#050608",
-                color: "#6df76d",
+                background: "#f8f9fa",
+                color: "#333333",
                 borderRadius: 8,
                 padding: "0.75rem",
                 minHeight: 80,
-                fontFamily: "monospace",
                 fontSize: "0.9rem",
                 position: "relative",
+                border: "1px solid #dee2e6"
               }}
             >
               {loadingSuggestion && (
@@ -292,7 +304,7 @@ const Home: React.FC = () => {
                     alignItems: "center",
                     gap: 6,
                     fontSize: "0.8rem",
-                    opacity: 0.8,
+                    color: "#6c757d"
                   }}
                 >
                   <IonSpinner name="dots" />
@@ -303,9 +315,8 @@ const Home: React.FC = () => {
               {suggestion ? (
                 suggestion
               ) : (
-                <span style={{ opacity: 0.6 }}>
-                  Ask something technical and Tapolio will answer. No small
-                  talk, no rambling.
+                <span style={{ opacity: 0.6, color: "#6c757d" }}>
+                  Ask something technical and Tapolio will answer.
                 </span>
               )}
             </div>
@@ -314,9 +325,9 @@ const Home: React.FC = () => {
 
         {/* Conversation history */}
         <IonCard style={{
-          background: "linear-gradient(135deg, #232526 0%, #414345 100%)",
-          border: "1px solid #a8dadc",
-          boxShadow: "0 0 30px rgba(168, 218, 220, 0.2)"
+          background: "#ffffff",
+          border: "1px solid #dee2e6",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)"
         }}>
           <IonCardContent>
             <div style={{ 
@@ -326,10 +337,10 @@ const Home: React.FC = () => {
               marginBottom: "1rem"
             }}>
               <h2 style={{ 
-                color: "#a8dadc",
-                textShadow: "0 0 10px rgba(168, 218, 220, 0.5)",
-                fontWeight: "bold",
-                margin: 0
+                color: "#333333",
+                fontWeight: "600",
+                margin: 0,
+                fontSize: "1.2rem"
               }}>
                 💬 Conversation {conversation.length > 0 && `(${conversation.length})`}
               </h2>
@@ -337,11 +348,12 @@ const Home: React.FC = () => {
                 <IonButton
                   size="small"
                   style={{
-                    background: "linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)",
-                    fontWeight: "bold",
+                    "--background": "#dc3545",
+                    "--background-hover": "#c82333",
+                    "--color": "#ffffff",
+                    fontWeight: "600",
                     fontSize: "0.8rem",
-                    boxShadow: "0 0 10px rgba(231, 76, 60, 0.3)",
-                    border: "none"
+                    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)"
                   }}
                   onClick={handleClearConversation}
                 >
@@ -358,39 +370,38 @@ const Home: React.FC = () => {
                     style={{ 
                       marginBottom: "1rem",
                       paddingBottom: "1rem",
-                      borderBottom: i < conversation.length - 1 ? "2px solid rgba(168, 218, 220, 0.2)" : "none",
-                      background: "rgba(0, 0, 0, 0.2)",
+                      borderBottom: i < conversation.length - 1 ? "1px solid #dee2e6" : "none",
+                      background: "#f8f9fa",
                       padding: "1rem",
                       borderRadius: "8px",
-                      border: "1px solid rgba(168, 218, 220, 0.1)"
+                      border: "1px solid #dee2e6"
                     }}
                   >
                     <div style={{ marginBottom: "0.5rem" }}>
                       <strong style={{ 
-                        color: "#52c7f2",
-                        textShadow: "0 0 5px rgba(82, 199, 242, 0.5)",
+                        color: "#0066cc",
                         fontSize: "1rem"
                       }}>Q:</strong> 
-                      <span style={{ color: "#e0e0e0", marginLeft: "0.5rem" }}>{c.question}</span>
+                      <span style={{ color: "#333333", marginLeft: "0.5rem" }}>{c.question}</span>
                     </div>
                     <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.6" }}>
                       <strong style={{ 
-                        color: "#6df76d",
-                        textShadow: "0 0 5px rgba(109, 247, 109, 0.5)",
+                        color: "#28a745",
                         fontSize: "1rem"
                       }}>A:</strong> 
-                      <span style={{ color: "#d0d0d0", marginLeft: "0.5rem" }}>{c.answer}</span>
+                      <span style={{ color: "#495057", marginLeft: "0.5rem" }}>{c.answer}</span>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <span style={{ opacity: 0.6, color: "#a8dadc" }}>
+              <span style={{ opacity: 0.6, color: "#6c757d" }}>
                 Questions and answers will appear here.
               </span>
             )}
           </IonCardContent>
         </IonCard>
+        </div>
       </IonContent>
     </IonPage>
   );

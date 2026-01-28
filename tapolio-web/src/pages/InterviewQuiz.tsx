@@ -11,13 +11,15 @@ import {
   IonTitle,
   IonToolbar,
   IonChip,
+  useIonViewWillLeave,
 } from "@ionic/react";
-import { play, refresh, checkmark, close } from "ionicons/icons";
+import { play, refresh, checkmark, close, mic, micOff, bulbOutline } from "ionicons/icons";
 import { useState, useCallback } from "react";
+import { useHistory } from "react-router-dom";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
-import { startInterview, submitAnswer } from "../services/api";
+import { startInterview, submitAnswer, getHint } from "../services/api";
 
-type Technology = "React" | "Angular" | "Product Owner" | "Product Manager" | "Warm Up";
+type Technology = "React" | "Angular" | "Product Owner" | "Product Manager" | "Business Analysis" | "QA Tester" | "Solution Architect" | "Scrum Master" | "DevOps Engineer" | "Data Analyst" | "Warm Up";
 
 interface QuestionResult {
   question: string;
@@ -27,6 +29,7 @@ interface QuestionResult {
 }
 
 const InterviewQuiz: React.FC = () => {
+  const history = useHistory();
   const [selectedTech, setSelectedTech] = useState<Technology | null>(null);
   const [isInterviewActive, setIsInterviewActive] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<string>("");
@@ -35,50 +38,58 @@ const InterviewQuiz: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [currentFeedback, setCurrentFeedback] = useState<{ score: number; feedback: string } | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const [loadingHint, setLoadingHint] = useState(false);
 
   const handleFinalTranscript = useCallback(
     async (text: string) => {
-      if (!isInterviewActive || isProcessing || text.trim().length === 0) return;
-      
-      // Prevent duplicate submissions - if we're showing feedback, don't submit again
-      if (currentFeedback) return;
-
-      console.log("📝 Submitting answer:", text);
-      setIsProcessing(true);
-      stopListening();
-
-      try {
-        const result = await submitAnswer(sessionId, text);
-        
-        setResults((prev) => [
-          ...prev,
-          {
-            question: currentQuestion,
-            userAnswer: text,
-            score: result.score,
-            feedback: result.feedback,
-          },
-        ]);
-
-        // Show feedback immediately
-        setCurrentFeedback({ score: result.score, feedback: result.feedback });
-        setIsProcessing(false);
-        resetTranscript();
-
-        // Store next question but don't increment counter yet
-        if (result.nextQuestion) {
-          setCurrentQuestion(result.nextQuestion);
-        } else {
-          // Interview complete
-          setIsInterviewActive(false);
-        }
-      } catch (e: any) {
-        console.error("Failed to submit answer:", e);
-        setIsProcessing(false);
-      }
+      // Just update the transcript, don't auto-submit
+      // User will click Submit Answer button when ready
+      console.log("📝 Transcript updated:", text);
     },
-    [isInterviewActive, isProcessing, sessionId, currentQuestion, currentFeedback]
+    []
   );
+
+  const handleSubmitAnswer = async () => {
+    if (!transcript || !isInterviewActive || isProcessing) return;
+    
+    // Prevent duplicate submissions
+    if (currentFeedback) return;
+
+    console.log("📝 Submitting answer:", transcript);
+    setIsProcessing(true);
+    stopListening();
+
+    try {
+      const result = await submitAnswer(sessionId, transcript);
+      
+      setResults((prev) => [
+        ...prev,
+        {
+          question: currentQuestion,
+          userAnswer: transcript,
+          score: result.score,
+          feedback: result.feedback,
+        },
+      ]);
+
+      // Show feedback immediately
+      setCurrentFeedback({ score: result.score, feedback: result.feedback });
+      setIsProcessing(false);
+      resetTranscript();
+
+      // Store next question but don't increment counter yet
+      if (result.nextQuestion) {
+        setCurrentQuestion(result.nextQuestion);
+      } else {
+        // Interview complete
+        setIsInterviewActive(false);
+      }
+    } catch (e: any) {
+      console.error("Failed to submit answer:", e);
+      setIsProcessing(false);
+    }
+  };
 
   const {
     isSupported,
@@ -95,6 +106,13 @@ const InterviewQuiz: React.FC = () => {
     onFinalChunk: handleFinalTranscript,
   });
 
+  // Stop listening when leaving this tab
+  useIonViewWillLeave(() => {
+    if (isListening) {
+      stopListening();
+    }
+  });
+
   const handleStartInterview = async () => {
     if (!selectedTech) return;
 
@@ -105,8 +123,8 @@ const InterviewQuiz: React.FC = () => {
       setQuestionNumber(1);
       setResults([]);
       setCurrentFeedback(null);
+      setHint(null);
       setIsInterviewActive(true);
-      setTimeout(() => startListening(), 500);
     } catch (e) {
       console.error("Failed to start interview:", e);
     }
@@ -119,6 +137,7 @@ const InterviewQuiz: React.FC = () => {
     setResults([]);
     setSelectedTech(null);
     setCurrentFeedback(null);
+    setHint(null);
     resetTranscript();
     stopListening();
   };
@@ -126,6 +145,7 @@ const InterviewQuiz: React.FC = () => {
   const handleContinue = () => {
     setCurrentFeedback(null);
     resetTranscript(); // Clear any leftover transcript
+    setHint(null); // Clear hint for next question
     
     // If we've completed all 5 questions, end the interview
     if (questionNumber >= 5) {
@@ -134,7 +154,21 @@ const InterviewQuiz: React.FC = () => {
     }
     
     setQuestionNumber((prev) => prev + 1);
-    setTimeout(() => startListening(), 500);
+  };
+
+  const handleGetHint = async () => {
+    if (!sessionId || loadingHint || hint) return;
+    
+    setLoadingHint(true);
+    try {
+      const response = await getHint(sessionId);
+      setHint(response.hint);
+      console.log("💡 Hint received:", response.hint);
+    } catch (e) {
+      console.error("Failed to get hint:", e);
+    } finally {
+      setLoadingHint(false);
+    }
   };
 
   const totalScore = results.reduce((sum, r) => sum + r.score, 0);
@@ -154,60 +188,69 @@ const InterviewQuiz: React.FC = () => {
 
   return (
     <IonPage>
-      <IonHeader>
-        <IonToolbar
-          style={{
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            borderBottom: "2px solid #6df76d",
-            "--background": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            "--color": "#fff",
-          }}
-        >
-          <IonTitle
-            style={{
-              fontWeight: "bold",
-              textShadow: "0 0 10px rgba(109, 247, 109, 0.5)",
-              color: "#fff",
-            }}
-          >
-            🎓 Tapolio · Live Quiz
-          </IonTitle>
-          {isInterviewActive && (
-            <IonButton
-              slot="end"
-              onClick={handleReset}
-              style={{
-                "--background": "rgba(255, 107, 107, 0.2)",
-                "--background-hover": "rgba(255, 107, 107, 0.3)",
-                "--color": "#ff6b6b",
-                fontWeight: "bold",
-                marginRight: "10px",
-              }}
-            >
-              <IonIcon slot="start" icon={close} />
-              Cancel Quiz
-            </IonButton>
-          )}
-        </IonToolbar>
-      </IonHeader>
-
       <IonContent
         className="ion-padding"
         style={{
-          background:
-            "linear-gradient(180deg, #0f0c29 0%, #302b63 50%, #24243e 100%)",
-          "--background": "transparent",
+          background: "#f5f5f5",
+          "--background": "#f5f5f5",
         }}
       >
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        {/* Logo */}
+        <div style={{ 
+          textAlign: "center", 
+          paddingTop: "2rem",
+          paddingBottom: "1rem",
+          position: "relative"
+        }}>
+          <img 
+            src="/tapolio_logo.png" 
+            alt="Tapolio" 
+            onClick={() => history.push("/")}
+            style={{
+              width: "180px",
+              height: "auto",
+              cursor: "pointer",
+            }}
+          />
+          <h1 style={{
+            color: "#333333",
+            fontSize: "2rem",
+            fontWeight: "600",
+            marginTop: "1rem",
+            marginBottom: "0"
+          }}>
+            Live Quiz
+          </h1>
+          {isInterviewActive && (
+            <IonButton
+              onClick={handleReset}
+              style={{
+                "--background": "#dc3545",
+                "--background-hover": "#c82333",
+                "--color": "#ffffff",
+                "--box-shadow": "none",
+                fontWeight: "600",
+                position: "absolute",
+                right: "0",
+                top: "2rem",
+                fontSize: "0.9rem",
+              }}
+            >
+              <IonIcon slot="start" icon={close} />
+              Cancel
+            </IonButton>
+          )}
+        </div>
         {!isSupported && (
           <IonCard
             style={{
-              background: "linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)",
-              border: "1px solid #ff6b6b",
-              boxShadow: "0 0 20px rgba(231, 76, 60, 0.3)",
+              background: "#ffffff",
+              border: "1px solid #dc3545",
+              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
             }}
           >
-            <IonCardContent style={{ color: "#fff" }}>
+            <IonCardContent style={{ color: "#dc3545" }}>
               Your browser doesn't support Speech Recognition. Try Chrome or
               Edge.
             </IonCardContent>
@@ -219,18 +262,18 @@ const InterviewQuiz: React.FC = () => {
             {/* Technology Selection */}
             <IonCard
               style={{
-                background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-                border: "1px solid #4a90e2",
-                boxShadow: "0 0 30px rgba(74, 144, 226, 0.2)",
+                background: "#ffffff",
+                border: "1px solid #dee2e6",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
               }}
             >
               <IonCardContent>
                 <h2
                   style={{
-                    color: "#52c7f2",
-                    textShadow: "0 0 10px rgba(82, 199, 242, 0.5)",
-                    fontWeight: "bold",
+                    color: "#333333",
+                    fontWeight: "600",
                     marginBottom: "1rem",
+                    fontSize: "1.2rem",
                   }}
                 >
                   Select Discipline or Topic
@@ -241,16 +284,17 @@ const InterviewQuiz: React.FC = () => {
                     style={{
                       background:
                         selectedTech === "React"
-                          ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                          : "rgba(255, 255, 255, 0.1)",
+                          ? "#0066cc"
+                          : "#ffffff",
                       border:
                         selectedTech === "React"
-                          ? "2px solid #667eea"
-                          : "1px solid #666",
-                      color: "#fff",
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "React" ? "#ffffff" : "#333333",
                       fontSize: "1.1rem",
                       padding: "0.5rem 1rem",
                       cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                     }}
                   >
                     ⚛️ React
@@ -260,16 +304,17 @@ const InterviewQuiz: React.FC = () => {
                     style={{
                       background:
                         selectedTech === "Angular"
-                          ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                          : "rgba(255, 255, 255, 0.1)",
+                          ? "#0066cc"
+                          : "#ffffff",
                       border:
                         selectedTech === "Angular"
-                          ? "2px solid #667eea"
-                          : "1px solid #666",
-                      color: "#fff",
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "Angular" ? "#ffffff" : "#333333",
                       fontSize: "1.1rem",
                       padding: "0.5rem 1rem",
                       cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                     }}
                   >
                     🅰️ Angular
@@ -279,16 +324,17 @@ const InterviewQuiz: React.FC = () => {
                     style={{
                       background:
                         selectedTech === "Product Owner"
-                          ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                          : "rgba(255, 255, 255, 0.1)",
+                          ? "#0066cc"
+                          : "#ffffff",
                       border:
                         selectedTech === "Product Owner"
-                          ? "2px solid #667eea"
-                          : "1px solid #666",
-                      color: "#fff",
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "Product Owner" ? "#ffffff" : "#333333",
                       fontSize: "1.1rem",
                       padding: "0.5rem 1rem",
                       cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                     }}
                   >
                     📋 Product Owner
@@ -298,35 +344,157 @@ const InterviewQuiz: React.FC = () => {
                     style={{
                       background:
                         selectedTech === "Product Manager"
-                          ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                          : "rgba(255, 255, 255, 0.1)",
+                          ? "#0066cc"
+                          : "#ffffff",
                       border:
                         selectedTech === "Product Manager"
-                          ? "2px solid #667eea"
-                          : "1px solid #666",
-                      color: "#fff",
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "Product Manager" ? "#ffffff" : "#333333",
                       fontSize: "1.1rem",
                       padding: "0.5rem 1rem",
                       cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                     }}
                   >
                     📊 Product Manager
+                  </IonChip>
+                  <IonChip
+                    onClick={() => setSelectedTech("Business Analysis")}
+                    style={{
+                      background:
+                        selectedTech === "Business Analysis"
+                          ? "#0066cc"
+                          : "#ffffff",
+                      border:
+                        selectedTech === "Business Analysis"
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "Business Analysis" ? "#ffffff" : "#333333",
+                      fontSize: "1.1rem",
+                      padding: "0.5rem 1rem",
+                      cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    📈 Business Analysis
+                  </IonChip>
+                  <IonChip
+                    onClick={() => setSelectedTech("QA Tester")}
+                    style={{
+                      background:
+                        selectedTech === "QA Tester"
+                          ? "#0066cc"
+                          : "#ffffff",
+                      border:
+                        selectedTech === "QA Tester"
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "QA Tester" ? "#ffffff" : "#333333",
+                      fontSize: "1.1rem",
+                      padding: "0.5rem 1rem",
+                      cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    🔍 QA Tester
+                  </IonChip>
+                  <IonChip
+                    onClick={() => setSelectedTech("Solution Architect")}
+                    style={{
+                      background:
+                        selectedTech === "Solution Architect"
+                          ? "#0066cc"
+                          : "#ffffff",
+                      border:
+                        selectedTech === "Solution Architect"
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "Solution Architect" ? "#ffffff" : "#333333",
+                      fontSize: "1.1rem",
+                      padding: "0.5rem 1rem",
+                      cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    🏗️ Solution Architect
+                  </IonChip>
+                  <IonChip
+                    onClick={() => setSelectedTech("Scrum Master")}
+                    style={{
+                      background:
+                        selectedTech === "Scrum Master"
+                          ? "#0066cc"
+                          : "#ffffff",
+                      border:
+                        selectedTech === "Scrum Master"
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "Scrum Master" ? "#ffffff" : "#333333",
+                      fontSize: "1.1rem",
+                      padding: "0.5rem 1rem",
+                      cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    🏃 Scrum Master
+                  </IonChip>
+                  <IonChip
+                    onClick={() => setSelectedTech("DevOps Engineer")}
+                    style={{
+                      background:
+                        selectedTech === "DevOps Engineer"
+                          ? "#0066cc"
+                          : "#ffffff",
+                      border:
+                        selectedTech === "DevOps Engineer"
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "DevOps Engineer" ? "#ffffff" : "#333333",
+                      fontSize: "1.1rem",
+                      padding: "0.5rem 1rem",
+                      cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    ⚙️ DevOps Engineer
+                  </IonChip>
+                  <IonChip
+                    onClick={() => setSelectedTech("Data Analyst")}
+                    style={{
+                      background:
+                        selectedTech === "Data Analyst"
+                          ? "#0066cc"
+                          : "#ffffff",
+                      border:
+                        selectedTech === "Data Analyst"
+                          ? "2px solid #0066cc"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "Data Analyst" ? "#ffffff" : "#333333",
+                      fontSize: "1.1rem",
+                      padding: "0.5rem 1rem",
+                      cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    📊 Data Analyst
                   </IonChip>
                   <IonChip
                     onClick={() => setSelectedTech("Warm Up")}
                     style={{
                       background:
                         selectedTech === "Warm Up"
-                          ? "linear-gradient(135deg, #ffa502 0%, #ff6348 100%)"
-                          : "rgba(255, 255, 255, 0.1)",
+                          ? "#28a745"
+                          : "#ffffff",
                       border:
                         selectedTech === "Warm Up"
-                          ? "2px solid #ffa502"
-                          : "1px solid #666",
-                      color: "#fff",
+                          ? "2px solid #28a745"
+                          : "1px solid #dee2e6",
+                      color: selectedTech === "Warm Up" ? "#ffffff" : "#333333",
                       fontSize: "1.1rem",
                       padding: "0.5rem 1rem",
                       cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                     }}
                   >
                     🎯 Warm Up
@@ -338,10 +506,11 @@ const InterviewQuiz: React.FC = () => {
                     onClick={handleStartInterview}
                     style={{
                       marginTop: "1rem",
-                      background:
-                        "linear-gradient(135deg, #6df76d 0%, #4caf50 100%)",
-                      fontWeight: "bold",
-                      boxShadow: "0 0 20px rgba(109, 247, 109, 0.5)",
+                      "--background": "#28a745",
+                      "--background-hover": "#218838",
+                      "--color": "#ffffff",
+                      fontWeight: "600",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                     }}
                   >
                     <IonIcon slot="start" icon={play} />
@@ -355,10 +524,9 @@ const InterviewQuiz: React.FC = () => {
             {results.length > 0 && (
               <IonCard
                 style={{
-                  background:
-                    "linear-gradient(135deg, #232526 0%, #414345 100%)",
-                  border: "1px solid #a8dadc",
-                  boxShadow: "0 0 30px rgba(168, 218, 220, 0.2)",
+                  background: "#ffffff",
+                  border: "1px solid #dee2e6",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
                 }}
               >
                 <IonCardContent>
@@ -372,10 +540,10 @@ const InterviewQuiz: React.FC = () => {
                   >
                     <h2
                       style={{
-                        color: "#a8dadc",
-                        textShadow: "0 0 10px rgba(168, 218, 220, 0.5)",
-                        fontWeight: "bold",
+                        color: "#333333",
+                        fontWeight: "600",
                         margin: 0,
+                        fontSize: "1.2rem",
                       }}
                     >
                       📊 Final Results
@@ -386,11 +554,10 @@ const InterviewQuiz: React.FC = () => {
                         fontWeight: "bold",
                         color:
                           grade === "A+" || grade === "A"
-                            ? "#6df76d"
+                            ? "#28a745"
                             : grade === "B" || grade === "C"
-                            ? "#ffa502"
-                            : "#ff6b6b",
-                        textShadow: "0 0 15px currentColor",
+                            ? "#ffc107"
+                            : "#dc3545",
                       }}
                     >
                       {grade}
@@ -411,10 +578,10 @@ const InterviewQuiz: React.FC = () => {
                       style={{
                         marginBottom: "1rem",
                         padding: "1rem",
-                        background: "rgba(0, 0, 0, 0.3)",
+                        background: "#f8f9fa",
                         borderRadius: "8px",
-                        border: `1px solid ${
-                          result.score >= 7 ? "#6df76d" : "#ffa502"
+                        border: `2px solid ${
+                          result.score >= 7 ? "#28a745" : "#ffc107"
                         }`,
                       }}
                     >
@@ -425,24 +592,24 @@ const InterviewQuiz: React.FC = () => {
                           marginBottom: "0.5rem",
                         }}
                       >
-                        <strong style={{ color: "#52c7f2" }}>
+                        <strong style={{ color: "#0066cc" }}>
                           Q{i + 1}:
                         </strong>
                         <div
                           style={{
-                            color: result.score >= 7 ? "#6df76d" : "#ffa502",
+                            color: result.score >= 7 ? "#28a745" : "#ffc107",
                             fontWeight: "bold",
                           }}
                         >
                           {result.score}/10
                         </div>
                       </div>
-                      <div style={{ color: "#d0d0d0", marginBottom: "0.5rem" }}>
+                      <div style={{ color: "#333333", marginBottom: "0.5rem" }}>
                         {result.question}
                       </div>
                       <div
                         style={{
-                          color: "#b0b0b0",
+                          color: "#6c757d",
                           fontSize: "0.9rem",
                           fontStyle: "italic",
                           marginBottom: "0.5rem",
@@ -450,7 +617,7 @@ const InterviewQuiz: React.FC = () => {
                       >
                         Your answer: {result.userAnswer}
                       </div>
-                      <div style={{ color: "#a8dadc", fontSize: "0.9rem" }}>
+                      <div style={{ color: "#495057", fontSize: "0.9rem" }}>
                         💬 {result.feedback}
                       </div>
                     </div>
@@ -459,10 +626,12 @@ const InterviewQuiz: React.FC = () => {
                     expand="block"
                     onClick={handleReset}
                     style={{
-                      background:
-                        "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                      fontWeight: "bold",
+                      "--background": "#0066cc",
+                      "--background-hover": "#0052a3",
+                      "--color": "#ffffff",
+                      fontWeight: "600",
                       marginTop: "1rem",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                     }}
                   >
                     <IonIcon slot="start" icon={refresh} />
@@ -477,9 +646,9 @@ const InterviewQuiz: React.FC = () => {
             {/* Progress */}
             <IonCard
               style={{
-                background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-                border: "1px solid #4a90e2",
-                boxShadow: "0 0 30px rgba(74, 144, 226, 0.2)",
+                background: "#ffffff",
+                border: "1px solid #dee2e6",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
               }}
             >
               <IonCardContent>
@@ -488,7 +657,7 @@ const InterviewQuiz: React.FC = () => {
                     display: "flex",
                     justifyContent: "space-between",
                     marginBottom: "0.5rem",
-                    color: "#fff",
+                    color: "#333333",
                   }}
                 >
                   <span style={{ fontWeight: "bold" }}>
@@ -505,19 +674,18 @@ const InterviewQuiz: React.FC = () => {
             {/* Current Question */}
             <IonCard
               style={{
-                background:
-                  "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)",
-                border: "2px solid #6df76d",
-                boxShadow: "0 0 40px rgba(109, 247, 109, 0.4)",
+                background: "#ffffff",
+                border: "2px solid #0066cc",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
               }}
             >
               <IonCardContent>
                 <h2
                   style={{
-                    color: "#6df76d",
-                    textShadow: "0 0 15px rgba(109, 247, 109, 0.8)",
-                    fontWeight: "bold",
+                    color: "#0066cc",
+                    fontWeight: "600",
                     marginBottom: "1rem",
+                    fontSize: "1.2rem",
                   }}
                 >
                   ❓ Question
@@ -525,28 +693,81 @@ const InterviewQuiz: React.FC = () => {
                 <div
                   style={{
                     fontSize: "1.2rem",
-                    color: "#e0e0e0",
+                    color: "#333333",
                     lineHeight: "1.6",
+                    marginBottom: "1rem",
                   }}
                 >
                   {currentQuestion}
                 </div>
+                <IonButton
+                  size="small"
+                  fill="outline"
+                  onClick={handleGetHint}
+                  disabled={loadingHint || !!hint || !!currentFeedback}
+                  style={{
+                    "--border-color": "#ffc107",
+                    "--color": "#ffc107",
+                  }}
+                >
+                  <IonIcon slot="start" icon={bulbOutline} />
+                  {loadingHint ? "Getting hint..." : hint ? "Hint shown below" : "Get a Hint"}
+                </IonButton>
               </IonCardContent>
             </IonCard>
+
+            {/* Hint Display */}
+            {hint && !currentFeedback && (
+              <IonCard
+                style={{
+                  background: "#fffbf0",
+                  border: "1px solid #ffc107",
+                  borderLeft: "4px solid #ffc107",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+                }}
+              >
+                <IonCardContent>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    <IonIcon icon={bulbOutline} style={{ color: "#ffc107", fontSize: "1.5rem" }} />
+                    <h3
+                      style={{
+                        color: "#856404",
+                        fontWeight: "600",
+                        margin: 0,
+                        fontSize: "1rem",
+                      }}
+                    >
+                      Hint
+                    </h3>
+                  </div>
+                  <div
+                    style={{
+                      color: "#856404",
+                      fontSize: "1rem",
+                      lineHeight: "1.6",
+                    }}
+                  >
+                    {hint}
+                  </div>
+                </IonCardContent>
+              </IonCard>
+            )}
 
             {/* Feedback Display */}
             {currentFeedback && (
               <IonCard
                 style={{
-                  background: `linear-gradient(135deg, ${
-                    currentFeedback.score >= 7 ? "#2d5016" : "#8b4513"
-                  } 0%, ${currentFeedback.score >= 7 ? "#4caf50" : "#d68910"} 100%)`,
-                  border: `2px solid ${currentFeedback.score >= 7 ? "#6df76d" : "#ffa502"}`,
-                  boxShadow: `0 0 40px ${
-                    currentFeedback.score >= 7
-                      ? "rgba(109, 247, 109, 0.4)"
-                      : "rgba(255, 165, 2, 0.4)"
-                  }`,
+                  background: "#ffffff",
+                  border: "1px solid #dee2e6",
+                  borderLeft: currentFeedback.score >= 7 ? "4px solid #28a745" : "4px solid #ffc107",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
                 }}
               >
                 <IonCardContent>
@@ -560,9 +781,10 @@ const InterviewQuiz: React.FC = () => {
                   >
                     <h2
                       style={{
-                        color: "#fff",
-                        fontWeight: "bold",
+                        color: currentFeedback.score >= 7 ? "#28a745" : "#ffc107",
+                        fontWeight: "600",
                         margin: 0,
+                        fontSize: "1.2rem",
                       }}
                     >
                       {currentFeedback.score >= 7 ? "✅ Great Answer!" : "💡 Room for Improvement"}
@@ -571,8 +793,7 @@ const InterviewQuiz: React.FC = () => {
                       style={{
                         fontSize: "2rem",
                         fontWeight: "bold",
-                        color: "#fff",
-                        textShadow: "0 0 10px rgba(255, 255, 255, 0.5)",
+                        color: currentFeedback.score >= 7 ? "#28a745" : "#ffc107",
                       }}
                     >
                       {currentFeedback.score}/10
@@ -580,7 +801,7 @@ const InterviewQuiz: React.FC = () => {
                   </div>
                   <div
                     style={{
-                      color: "#fff",
+                      color: "#333333",
                       fontSize: "1rem",
                       lineHeight: "1.6",
                       marginBottom: "1rem",
@@ -592,9 +813,11 @@ const InterviewQuiz: React.FC = () => {
                     expand="block"
                     onClick={handleContinue}
                     style={{
-                      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                      fontWeight: "bold",
-                      boxShadow: "0 0 20px rgba(102, 126, 234, 0.5)",
+                      "--background": "#0066cc",
+                      "--background-hover": "#0052a3",
+                      "--color": "#ffffff",
+                      fontWeight: "600",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                     }}
                   >
                     {questionNumber < 5 ? "Next Question →" : "See Final Results"}
@@ -607,40 +830,55 @@ const InterviewQuiz: React.FC = () => {
             {!currentFeedback && (
               <IonCard
                 style={{
-                  background: "linear-gradient(135deg, #2c3e50 0%, #34495e 100%)",
-                  border: "1px solid #52c7f2",
-                  boxShadow: "0 0 30px rgba(82, 199, 242, 0.2)",
+                  background: "#ffffff",
+                  border: "1px solid #dee2e6",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
                 }}
               >
                 <IonCardContent>
-                <h2
-                  style={{
-                    color: "#52c7f2",
-                    textShadow: "0 0 10px rgba(82, 199, 242, 0.5)",
-                    fontWeight: "bold",
-                    marginBottom: "1rem",
-                  }}
-                >
-                  🎤 Your Answer
-                </h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                  <h2
+                    style={{
+                      color: "#333333",
+                      fontWeight: "600",
+                      margin: 0,
+                      fontSize: "1.2rem",
+                    }}
+                  >
+                    🎤 Your Answer
+                  </h2>
+                  <IonButton
+                    onClick={isListening ? stopListening : startListening}
+                    style={{
+                      "--background": isListening ? "#dc3545" : "#28a745",
+                      "--background-hover": isListening ? "#c82333" : "#218838",
+                      "--color": "#ffffff",
+                      fontWeight: "600",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    <IonIcon slot="start" icon={isListening ? micOff : mic} />
+                    {isListening ? "Stop" : "Start Recording"}
+                  </IonButton>
+                </div>
                 <div
                   style={{
-                    border: "2px solid #52c7f2",
                     borderRadius: 8,
                     padding: "0.75rem",
                     minHeight: 100,
                     fontSize: "0.9rem",
                     whiteSpace: "pre-wrap",
-                    background: "rgba(0, 0, 0, 0.3)",
-                    color: "#e0e0e0",
-                    boxShadow: "inset 0 0 15px rgba(82, 199, 242, 0.1)",
+                    background: "#e9ecef",
+                    color: "#212529",
+                    fontFamily: "monospace",
+                    border: isListening ? "2px solid #28a745" : "none",
                   }}
                 >
                   {transcript || (
-                    <span style={{ opacity: 0.6, color: "#52c7f2" }}>
+                    <span style={{ opacity: 0.6, color: "#6c757d" }}>
                       {isListening
                         ? "Listening... Speak your answer."
-                        : "Click to start speaking"}
+                        : "Click the Start Recording button above"}
                     </span>
                   )}
                 </div>
@@ -651,18 +889,35 @@ const InterviewQuiz: React.FC = () => {
                       display: "flex",
                       alignItems: "center",
                       gap: "0.5rem",
-                      color: "#6df76d",
+                      color: "#28a745",
                     }}
                   >
                     <IonSpinner name="dots" />
                     <span>AI is evaluating your answer...</span>
                   </div>
                 )}
+                <IonButton
+                  expand="block"
+                  onClick={handleSubmitAnswer}
+                  disabled={!transcript || isProcessing || !!currentFeedback}
+                  style={{
+                    marginTop: "1rem",
+                    "--background": "#28a745",
+                    "--background-hover": "#218838",
+                    "--color": "#ffffff",
+                    fontWeight: "600",
+                    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    opacity: !transcript || isProcessing || !!currentFeedback ? 0.5 : 1,
+                  }}
+                >
+                  {isProcessing ? "Submitting..." : "Submit Answer"}
+                </IonButton>
               </IonCardContent>
             </IonCard>
             )}
           </>
         )}
+        </div>
       </IonContent>
     </IonPage>
   );

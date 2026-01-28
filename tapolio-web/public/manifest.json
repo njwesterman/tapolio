@@ -1,6 +1,7 @@
 {
-  "short_name": "Ionic App",
-  "name": "My Ionic App",
+  "short_name": "Tapolio",
+  "name": "Tapolio - AI Voice Interview Practice",
+  "description": "AI-powered voice assistant for technical interview practice and real-time Q&A",
   "icons": [
     {
       "src": "assets/icon/favicon.png",
@@ -16,6 +17,8 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff"
+  "theme_color": "#0066cc",
+  "background_color": "#ffffff",
+  "categories": ["education", "productivity"],
+  "orientation": "portrait"
 }

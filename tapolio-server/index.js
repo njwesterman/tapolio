@@ -371,6 +371,40 @@ Just return the question, nothing else.`;
   }
 });
 
+// Get a hint for the current question
+app.post("/interview/hint", async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    const session = interviewSessions.get(sessionId);
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const currentQuestion = session.questions[session.questions.length - 1];
+    console.log(`💡 Generating hint for: "${currentQuestion}"`);
+
+    const hintPrompt = `You are helping someone answer this interview question: "${currentQuestion}"
+
+Give a helpful hint (1-2 sentences) that guides them toward a good answer without giving away the full response. Be encouraging and specific.`;
+
+    const hintCompletion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: hintPrompt }],
+      temperature: 0.7,
+      max_tokens: 100
+    });
+
+    const hint = hintCompletion.choices[0]?.message?.content?.trim() || "Think about the key concepts and your practical experience.";
+    console.log(`💡 Hint: "${hint}"`);
+
+    res.json({ hint });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate hint" });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
