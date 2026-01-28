@@ -112,11 +112,14 @@ const Home: React.FC = () => {
       <IonHeader>
         <IonToolbar style={{ 
           background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          borderBottom: "2px solid #6df76d"
+          borderBottom: "2px solid #6df76d",
+          "--background": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          "--color": "#fff",
         }}>
           <IonTitle style={{ 
             fontWeight: "bold",
-            textShadow: "0 0 10px rgba(109, 247, 109, 0.5)"
+            textShadow: "0 0 10px rgba(109, 247, 109, 0.5)",
+            color: "#fff",
           }}>
             ⚡ Tapolio · Live Copilot
           </IonTitle>

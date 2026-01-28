@@ -2,10 +2,17 @@
 import { Redirect, Route } from "react-router-dom";
 import {
   IonApp,
+  IonIcon,
+  IonLabel,
   IonRouterOutlet,
+  IonTabBar,
+  IonTabButton,
+  IonTabs,
 } from "@ionic/react";
 import { IonReactRouter } from "@ionic/react-router";
+import { chatbubbles, school } from "ionicons/icons";
 import Home from "./pages/Home";
+import InterviewQuiz from "./pages/InterviewQuiz";
 
 import { setupIonicReact } from "@ionic/react";
 
@@ -25,14 +32,41 @@ setupIonicReact();
 const App: React.FC = () => (
   <IonApp>
     <IonReactRouter>
-      <IonRouterOutlet>
-        <Route exact path="/home">
-          <Home />
-        </Route>
-        <Route exact path="/">
-          <Redirect to="/home" />
-        </Route>
-      </IonRouterOutlet>
+      <IonTabs>
+        <IonRouterOutlet>
+          <Route exact path="/copilot">
+            <Home />
+          </Route>
+          <Route exact path="/quiz">
+            <InterviewQuiz />
+          </Route>
+          <Route exact path="/">
+            <Redirect to="/copilot" />
+          </Route>
+        </IonRouterOutlet>
+        <IonTabBar slot="bottom" style={{
+          background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
+          borderTop: "2px solid #667eea",
+          "--background": "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
+          "--color": "#a8dadc",
+          "--color-selected": "#6df76d",
+        }}>
+          <IonTabButton tab="copilot" href="/copilot" style={{
+            "--color": "#a8dadc",
+            "--color-selected": "#6df76d",
+          }}>
+            <IonIcon icon={chatbubbles} />
+            <IonLabel>Live Copilot</IonLabel>
+          </IonTabButton>
+          <IonTabButton tab="quiz" href="/quiz" style={{
+            "--color": "#a8dadc",
+            "--color-selected": "#6df76d",
+          }}>
+            <IonIcon icon={school} />
+            <IonLabel>Live Quiz</IonLabel>
+          </IonTabButton>
+        </IonTabBar>
+      </IonTabs>
     </IonReactRouter>
   </IonApp>
 );

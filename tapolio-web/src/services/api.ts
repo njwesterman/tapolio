@@ -57,3 +57,48 @@ export async function resetConversation(): Promise<void> {
     method: "POST",
   });
 }
+
+// Interview API functions
+export interface InterviewStartResponse {
+  sessionId: string;
+  firstQuestion: string;
+}
+
+export interface InterviewAnswerResponse {
+  score: number;
+  feedback: string;
+  nextQuestion: string | null;
+  complete: boolean;
+}
+
+export async function startInterview(technology: string): Promise<InterviewStartResponse> {
+  const res = await fetch(`${API_BASE_URL}/interview/start`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ technology }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to start interview: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function submitAnswer(sessionId: string, answer: string): Promise<InterviewAnswerResponse> {
+  const res = await fetch(`${API_BASE_URL}/interview/answer`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ sessionId, answer }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to submit answer: ${res.status}`);
+  }
+
+  return res.json();
+}
