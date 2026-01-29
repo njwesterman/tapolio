@@ -2,6 +2,7 @@
   "short_name": "Tapolio",
   "name": "Tapolio - AI Voice Interview Practice",
   "description": "AI-powered voice assistant for technical interview practice and real-time Q&A",
+  "permissions": ["microphone"],
   "icons": [
     {
       "src": "assets/icon/favicon.png",

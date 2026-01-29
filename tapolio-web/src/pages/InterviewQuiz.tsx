@@ -3,23 +3,25 @@ import {
   IonCard,
   IonCardContent,
   IonContent,
-  IonHeader,
   IonIcon,
   IonPage,
   IonProgressBar,
   IonSpinner,
-  IonTitle,
-  IonToolbar,
-  IonChip,
+  IonSelect,
+  IonSelectOption,
+  IonTextarea,
   useIonViewWillLeave,
 } from "@ionic/react";
-import { play, refresh, checkmark, close, mic, micOff, bulbOutline } from "ionicons/icons";
-import { useState, useCallback } from "react";
-import { useHistory } from "react-router-dom";
+import { play, refresh, checkmark, close, mic, micOff, bulbOutline, keypadOutline, lockClosed, sparkles, lockOpenOutline, timeOutline } from "ionicons/icons";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useHistory, useLocation } from "react-router-dom";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { startInterview, submitAnswer, getHint } from "../services/api";
+import { useAuth, FREE_QUIZ_TOPICS } from "../contexts/AuthContext";
+import UserHeader from "../components/UserHeader";
+import { saveQuizResult, loadQuizResults, QuizResultData } from "../services/parse";
 
-type Technology = "React" | "Angular" | "Product Owner" | "Product Manager" | "Business Analysis" | "QA Tester" | "Solution Architect" | "Scrum Master" | "DevOps Engineer" | "Data Analyst" | "Warm Up";
+type Technology = "React" | "Angular" | "Product Owner" | "Product Manager" | "Business Analysis" | "QA Tester" | "Solution Architect" | "Scrum Master" | "DevOps Engineer" | "Data Analyst" | "General Knowledge" | "Java Developer" | "ServiceNow Developer" | "Python Developer" | "Node.js Developer" | "SQL Developer" | "AWS Solutions Architect";
 
 interface QuestionResult {
   question: string;
@@ -30,7 +32,29 @@ interface QuestionResult {
 
 const InterviewQuiz: React.FC = () => {
   const history = useHistory();
+  const location = useLocation();
+  const { 
+    isAuthenticated, 
+    credits, 
+    useCredit, 
+    canAccessQuizTopic, 
+    setShowAuthModal, 
+    setShowCreditsModal 
+  } = useAuth();
+  
   const [selectedTech, setSelectedTech] = useState<Technology | null>(null);
+
+  // Pre-select topic from query param
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const topic = params.get('topic');
+    if (topic) {
+      const validTopics: Technology[] = ["React", "Angular", "Product Owner", "Product Manager", "Business Analysis", "QA Tester", "Solution Architect", "Scrum Master", "DevOps Engineer", "Data Analyst", "General Knowledge", "Java Developer", "ServiceNow Developer", "Python Developer", "Node.js Developer", "SQL Developer", "AWS Solutions Architect"];
+      if (validTopics.includes(topic as Technology)) {
+        setSelectedTech(topic as Technology);
+      }
+    }
+  }, [location.search]);
   const [isInterviewActive, setIsInterviewActive] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<string>("");
   const [questionNumber, setQuestionNumber] = useState(0);
@@ -40,6 +64,62 @@ const InterviewQuiz: React.FC = () => {
   const [currentFeedback, setCurrentFeedback] = useState<{ score: number; feedback: string } | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [loadingHint, setLoadingHint] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [inputMode, setInputMode] = useState<'voice' | 'text'>('text'); // Default to text to avoid permission prompt
+  const [textAnswer, setTextAnswer] = useState('');
+  const [quizHistory, setQuizHistory] = useState<QuizResultData[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const resultsSavedRef = useRef(false);
+
+  // Load quiz history when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadQuizResults().then(history => {
+        setQuizHistory(history);
+        console.log("📚 Loaded quiz history:", history.length, "tests");
+      }).catch(err => {
+        console.error("Failed to load quiz history:", err);
+      });
+    } else {
+      setQuizHistory([]);
+    }
+  }, [isAuthenticated]);
+
+  // Save quiz results when quiz completes (3 for General Knowledge, 5 for others)
+  const maxQuestions = selectedTech === "General Knowledge" ? 3 : 5;
+  useEffect(() => {
+    if (!isInterviewActive && results.length > 0 && results.length === maxQuestions && selectedTech && isAuthenticated && !resultsSavedRef.current) {
+      resultsSavedRef.current = true;
+      const total = results.reduce((sum, r) => sum + r.score, 0);
+      const maxScore = maxQuestions * 10;
+      const avg = total / results.length;
+      const quizGrade = avg >= 9 ? "A+" : avg >= 8 ? "A" : avg >= 7 ? "B" : avg >= 6 ? "C" : avg >= 5 ? "D" : "F";
+      
+      saveQuizResult({
+        topic: selectedTech,
+        totalScore: total,
+        maxScore: maxScore,
+        percentage: (total / maxScore) * 100,
+        grade: quizGrade,
+        questionsCount: results.length,
+        results: results,
+      }).then(() => {
+        // Refresh history after saving
+        loadQuizResults().then(history => {
+          setQuizHistory(history);
+        });
+      }).catch(err => {
+        console.error("Failed to save quiz result:", err);
+      });
+    }
+  }, [isInterviewActive, results, selectedTech, isAuthenticated, maxQuestions]);
+
+  // Reset the saved flag when starting a new quiz
+  useEffect(() => {
+    if (isInterviewActive) {
+      resultsSavedRef.current = false;
+    }
+  }, [isInterviewActive]);
 
   const handleFinalTranscript = useCallback(
     async (text: string) => {
@@ -51,23 +131,24 @@ const InterviewQuiz: React.FC = () => {
   );
 
   const handleSubmitAnswer = async () => {
-    if (!transcript || !isInterviewActive || isProcessing) return;
+    const answerText = inputMode === 'text' ? textAnswer : transcript;
+    if (!answerText || !isInterviewActive || isProcessing) return;
     
     // Prevent duplicate submissions
     if (currentFeedback) return;
 
-    console.log("📝 Submitting answer:", transcript);
+    console.log("📝 Submitting answer:", answerText);
     setIsProcessing(true);
-    stopListening();
+    if (inputMode === 'voice') stopListening();
 
     try {
-      const result = await submitAnswer(sessionId, transcript);
+      const result = await submitAnswer(sessionId, answerText);
       
       setResults((prev) => [
         ...prev,
         {
           question: currentQuestion,
-          userAnswer: transcript,
+          userAnswer: answerText,
           score: result.score,
           feedback: result.feedback,
         },
@@ -77,6 +158,7 @@ const InterviewQuiz: React.FC = () => {
       setCurrentFeedback({ score: result.score, feedback: result.feedback });
       setIsProcessing(false);
       resetTranscript();
+      setTextAnswer('');
 
       // Store next question but don't increment counter yet
       if (result.nextQuestion) {
@@ -114,9 +196,32 @@ const InterviewQuiz: React.FC = () => {
   });
 
   const handleStartInterview = async () => {
-    if (!selectedTech) return;
+    if (!selectedTech || isStarting) return;
 
+    // Check access for the selected topic
+    if (!canAccessQuizTopic(selectedTech)) {
+      if (!isAuthenticated) {
+        setShowAuthModal(true);
+      } else {
+        setShowCreditsModal(true);
+      }
+      return;
+    }
+
+    setIsStarting(true);
     try {
+      // Use a credit for paid topics
+      const isFree = FREE_QUIZ_TOPICS.includes(selectedTech);
+      if (!isFree && isAuthenticated) {
+        try {
+          await useCredit();
+        } catch (creditError) {
+          console.error("Failed to use credit:", creditError);
+          setIsStarting(false);
+          return;
+        }
+      }
+      
       const response = await startInterview(selectedTech);
       setSessionId(response.sessionId);
       setCurrentQuestion(response.firstQuestion);
@@ -127,6 +232,8 @@ const InterviewQuiz: React.FC = () => {
       setIsInterviewActive(true);
     } catch (e) {
       console.error("Failed to start interview:", e);
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -139,12 +246,14 @@ const InterviewQuiz: React.FC = () => {
     setCurrentFeedback(null);
     setHint(null);
     resetTranscript();
+    setTextAnswer('');
     stopListening();
   };
 
   const handleContinue = () => {
     setCurrentFeedback(null);
     resetTranscript(); // Clear any leftover transcript
+    setTextAnswer(''); // Clear text answer
     setHint(null); // Clear hint for next question
     
     // If we've completed all 5 questions, end the interview
@@ -188,6 +297,7 @@ const InterviewQuiz: React.FC = () => {
 
   return (
     <IonPage>
+      <UserHeader />
       <IonContent
         className="ion-padding"
         style={{
@@ -199,9 +309,8 @@ const InterviewQuiz: React.FC = () => {
         {/* Logo */}
         <div style={{ 
           textAlign: "center", 
-          paddingTop: "2rem",
+          paddingTop: "4rem",
           paddingBottom: "1rem",
-          position: "relative"
         }}>
           <img 
             src="/tapolio_logo.png" 
@@ -222,25 +331,6 @@ const InterviewQuiz: React.FC = () => {
           }}>
             Live Quiz
           </h1>
-          {isInterviewActive && (
-            <IonButton
-              onClick={handleReset}
-              style={{
-                "--background": "#dc3545",
-                "--background-hover": "#c82333",
-                "--color": "#ffffff",
-                "--box-shadow": "none",
-                fontWeight: "600",
-                position: "absolute",
-                right: "0",
-                top: "2rem",
-                fontSize: "0.9rem",
-              }}
-            >
-              <IonIcon slot="start" icon={close} />
-              Cancel
-            </IonButton>
-          )}
         </div>
         {!isSupported && (
           <IonCard
@@ -278,245 +368,104 @@ const InterviewQuiz: React.FC = () => {
                 >
                   Select Discipline or Topic
                 </h2>
-                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-                  <IonChip
-                    onClick={() => setSelectedTech("React")}
-                    style={{
-                      background:
-                        selectedTech === "React"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "React"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "React" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    ⚛️ React
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("Angular")}
-                    style={{
-                      background:
-                        selectedTech === "Angular"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "Angular"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "Angular" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    🅰️ Angular
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("Product Owner")}
-                    style={{
-                      background:
-                        selectedTech === "Product Owner"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "Product Owner"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "Product Owner" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    📋 Product Owner
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("Product Manager")}
-                    style={{
-                      background:
-                        selectedTech === "Product Manager"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "Product Manager"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "Product Manager" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    📊 Product Manager
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("Business Analysis")}
-                    style={{
-                      background:
-                        selectedTech === "Business Analysis"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "Business Analysis"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "Business Analysis" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    📈 Business Analysis
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("QA Tester")}
-                    style={{
-                      background:
-                        selectedTech === "QA Tester"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "QA Tester"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "QA Tester" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    🔍 QA Tester
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("Solution Architect")}
-                    style={{
-                      background:
-                        selectedTech === "Solution Architect"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "Solution Architect"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "Solution Architect" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    🏗️ Solution Architect
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("Scrum Master")}
-                    style={{
-                      background:
-                        selectedTech === "Scrum Master"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "Scrum Master"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "Scrum Master" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    🏃 Scrum Master
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("DevOps Engineer")}
-                    style={{
-                      background:
-                        selectedTech === "DevOps Engineer"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "DevOps Engineer"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "DevOps Engineer" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    ⚙️ DevOps Engineer
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("Data Analyst")}
-                    style={{
-                      background:
-                        selectedTech === "Data Analyst"
-                          ? "#0066cc"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "Data Analyst"
-                          ? "2px solid #0066cc"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "Data Analyst" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    📊 Data Analyst
-                  </IonChip>
-                  <IonChip
-                    onClick={() => setSelectedTech("Warm Up")}
-                    style={{
-                      background:
-                        selectedTech === "Warm Up"
-                          ? "#28a745"
-                          : "#ffffff",
-                      border:
-                        selectedTech === "Warm Up"
-                          ? "2px solid #28a745"
-                          : "1px solid #dee2e6",
-                      color: selectedTech === "Warm Up" ? "#ffffff" : "#333333",
-                      fontSize: "1.1rem",
-                      padding: "0.5rem 1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    🎯 Warm Up
-                  </IonChip>
-                </div>
+                <IonSelect
+                  value={selectedTech}
+                  onIonChange={(e) => setSelectedTech(e.detail.value)}
+                  placeholder="Choose a discipline..."
+                  interface="action-sheet"
+                  style={{
+                    width: "100%",
+                    background: "#f8f9fa",
+                    borderRadius: "8px",
+                    padding: "0.5rem",
+                    border: "1px solid #dee2e6",
+                  }}
+                >
+                  <IonSelectOption value="General Knowledge">🎯 General Knowledge (FREE - 3 Questions)</IonSelectOption>
+                  <IonSelectOption value="Product Owner">📋 Product Owner</IonSelectOption>
+                  <IonSelectOption value="React">⚛️ React</IonSelectOption>
+                  <IonSelectOption value="Angular">🅰️ Angular</IonSelectOption>
+                  <IonSelectOption value="Java Developer">☕ Java Developer</IonSelectOption>
+                  <IonSelectOption value="Python Developer">🐍 Python Developer</IonSelectOption>
+                  <IonSelectOption value="Node.js Developer">💚 Node.js Developer</IonSelectOption>
+                  <IonSelectOption value="SQL Developer">🗃️ SQL Developer</IonSelectOption>
+                  <IonSelectOption value="AWS Solutions Architect">☁️ AWS Solutions Architect</IonSelectOption>
+                  <IonSelectOption value="ServiceNow Developer">🔧 ServiceNow Developer</IonSelectOption>
+                  <IonSelectOption value="Product Manager">📊 Product Manager</IonSelectOption>
+                  <IonSelectOption value="Business Analysis">📈 Business Analysis</IonSelectOption>
+                  <IonSelectOption value="QA Tester">🔍 QA Tester</IonSelectOption>
+                  <IonSelectOption value="Solution Architect">🏗️ Solution Architect</IonSelectOption>
+                  <IonSelectOption value="Scrum Master">🏃 Scrum Master</IonSelectOption>
+                  <IonSelectOption value="DevOps Engineer">⚙️ DevOps Engineer</IonSelectOption>
+                  <IonSelectOption value="Data Analyst">📊 Data Analyst</IonSelectOption>
+                </IonSelect>
+                
+                {/* Access Info */}
                 {selectedTech && (
-                  <IonButton
-                    expand="block"
-                    onClick={handleStartInterview}
-                    style={{
-                      marginTop: "1rem",
-                      "--background": "#28a745",
-                      "--background-hover": "#218838",
-                      "--color": "#ffffff",
-                      fontWeight: "600",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    <IonIcon slot="start" icon={play} />
-                    Start Interview (5 Questions)
-                  </IonButton>
+                  <div style={{ 
+                    marginTop: "1rem",
+                    padding: "0.75rem",
+                    borderRadius: "8px",
+                    background: canAccessQuizTopic(selectedTech) ? "#e8f5e9" : "#fff3e0",
+                    border: `1px solid ${canAccessQuizTopic(selectedTech) ? "#4caf50" : "#ff9800"}`,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}>
+                    <IonIcon 
+                      icon={canAccessQuizTopic(selectedTech) ? lockOpenOutline : lockClosed} 
+                      style={{ 
+                        fontSize: "1.2rem", 
+                        color: canAccessQuizTopic(selectedTech) ? "#4caf50" : "#ff9800" 
+                      }} 
+                    />
+                    <span style={{ 
+                      fontSize: "0.9rem", 
+                      color: canAccessQuizTopic(selectedTech) ? "#2e7d32" : "#e65100" 
+                    }}>
+                      {FREE_QUIZ_TOPICS.includes(selectedTech) 
+                        ? "This topic is free for everyone!"
+                        : canAccessQuizTopic(selectedTech)
+                          ? `You have ${credits} credit${credits !== 1 ? 's' : ''} available`
+                          : !isAuthenticated 
+                            ? "Sign in to access this topic (3 free credits on signup!)"
+                            : "You need credits to access this topic"
+                      }
+                    </span>
+                  </div>
                 )}
+                
+                <IonButton
+                  expand="block"
+                  size="large"
+                  onClick={handleStartInterview}
+                  disabled={!selectedTech || isStarting}
+                  style={{
+                    marginTop: "1.5rem",
+                    "--background": selectedTech && canAccessQuizTopic(selectedTech) ? "#28a745" : "#ff9800",
+                    "--background-hover": selectedTech && canAccessQuizTopic(selectedTech) ? "#218838" : "#f57c00",
+                    "--color": "#ffffff",
+                    fontWeight: "700",
+                    fontSize: "1.2rem",
+                    height: "60px",
+                    boxShadow: `0 4px 12px ${selectedTech && canAccessQuizTopic(selectedTech) ? "rgba(40, 167, 69, 0.3)" : "rgba(255, 152, 0, 0.3)"}`,
+                    opacity: !selectedTech || isStarting ? 0.5 : 1,
+                  }}
+                >
+                  {isStarting ? (
+                    <IonSpinner name="dots" style={{ marginRight: "0.5rem" }} />
+                  ) : selectedTech && !canAccessQuizTopic(selectedTech) ? (
+                    <IonIcon slot="start" icon={!isAuthenticated ? lockClosed : sparkles} />
+                  ) : (
+                    <IonIcon slot="start" icon={play} />
+                  )}
+                  {isStarting 
+                    ? "Starting..." 
+                    : selectedTech && !canAccessQuizTopic(selectedTech)
+                      ? !isAuthenticated ? "Sign In to Start" : "Get Credits to Start"
+                      : `Start Interview (${selectedTech === "General Knowledge" ? 3 : 5} Questions)`
+                  }
+                </IonButton>
               </IonCardContent>
             </IonCard>
 
@@ -640,10 +589,130 @@ const InterviewQuiz: React.FC = () => {
                 </IonCardContent>
               </IonCard>
             )}
+
+            {/* Quiz History */}
+            {isAuthenticated && quizHistory.length > 0 && (
+              <IonCard
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #dee2e6",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+                }}
+              >
+                <IonCardContent>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "1rem",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => setShowHistory(!showHistory)}
+                  >
+                    <h2
+                      style={{
+                        color: "#333333",
+                        fontWeight: "600",
+                        margin: 0,
+                        fontSize: "1.2rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      <IonIcon icon={timeOutline} />
+                      Previous Tests ({quizHistory.length})
+                    </h2>
+                    <span style={{ color: "#0066cc", fontSize: "0.9rem" }}>
+                      {showHistory ? "Hide ▲" : "Show ▼"}
+                    </span>
+                  </div>
+                  
+                  {showHistory && (
+                    <div style={{ marginTop: "0.5rem" }}>
+                      {quizHistory.slice(0, 10).map((quiz, i) => (
+                        <div
+                          key={quiz.id || i}
+                          style={{
+                            padding: "0.75rem",
+                            marginBottom: "0.5rem",
+                            background: "#f8f9fa",
+                            borderRadius: "8px",
+                            border: `2px solid ${
+                              quiz.grade === "A+" || quiz.grade === "A"
+                                ? "#28a745"
+                                : quiz.grade === "B" || quiz.grade === "C"
+                                ? "#ffc107"
+                                : "#dc3545"
+                            }`,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
+                            <div style={{ 
+                              fontWeight: "600", 
+                              color: "#333333",
+                              marginBottom: "0.25rem",
+                            }}>
+                              {quiz.topic}
+                            </div>
+                            <div style={{ 
+                              fontSize: "0.8rem", 
+                              color: "#6c757d" 
+                            }}>
+                              {new Date(quiz.completedAt).toLocaleDateString()} at{" "}
+                              {new Date(quiz.completedAt).toLocaleTimeString([], { 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div
+                              style={{
+                                fontSize: "1.5rem",
+                                fontWeight: "bold",
+                                color:
+                                  quiz.grade === "A+" || quiz.grade === "A"
+                                    ? "#28a745"
+                                    : quiz.grade === "B" || quiz.grade === "C"
+                                    ? "#ffc107"
+                                    : "#dc3545",
+                              }}
+                            >
+                              {quiz.grade}
+                            </div>
+                            <div style={{ 
+                              fontSize: "0.8rem", 
+                              color: "#6c757d" 
+                            }}>
+                              {quiz.totalScore}/{quiz.maxScore}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {quizHistory.length > 10 && (
+                        <div style={{ 
+                          textAlign: "center", 
+                          color: "#6c757d",
+                          fontSize: "0.9rem",
+                          marginTop: "0.5rem",
+                        }}>
+                          Showing 10 of {quizHistory.length} tests
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </IonCardContent>
+              </IonCard>
+            )}
           </>
         ) : (
           <>
-            {/* Progress */}
+            {/* Progress with Cancel button */}
             <IonCard
               style={{
                 background: "#ffffff",
@@ -656,65 +725,84 @@ const InterviewQuiz: React.FC = () => {
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    marginBottom: "0.5rem",
-                    color: "#333333",
+                    alignItems: "center",
+                    marginBottom: "0.75rem",
                   }}
                 >
-                  <span style={{ fontWeight: "bold" }}>
-                    Question {questionNumber}/5
-                  </span>
-                  <span>
-                    Score: {totalScore}/50
-                  </span>
+                  <div style={{ color: "#333333" }}>
+                    <span style={{ fontWeight: "bold" }}>
+                      Question {questionNumber}/{maxQuestions}
+                    </span>
+                    <span style={{ marginLeft: "1rem" }}>
+                      Score: {totalScore}/{maxQuestions * 10}
+                    </span>
+                  </div>
+                  <IonButton
+                    size="small"
+                    onClick={handleReset}
+                    style={{
+                      "--background": "#dc3545",
+                      "--background-hover": "#c82333",
+                      "--color": "#ffffff",
+                      "--box-shadow": "none",
+                      fontWeight: "600",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <IonIcon slot="start" icon={close} />
+                    Cancel
+                  </IonButton>
                 </div>
-                <IonProgressBar value={questionNumber / 5} />
+                <IonProgressBar value={questionNumber / maxQuestions} />
               </IonCardContent>
             </IonCard>
 
-            {/* Current Question */}
-            <IonCard
-              style={{
-                background: "#ffffff",
-                border: "2px solid #0066cc",
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              <IonCardContent>
-                <h2
-                  style={{
-                    color: "#0066cc",
-                    fontWeight: "600",
-                    marginBottom: "1rem",
-                    fontSize: "1.2rem",
-                  }}
-                >
-                  ❓ Question
-                </h2>
-                <div
-                  style={{
-                    fontSize: "1.2rem",
-                    color: "#333333",
-                    lineHeight: "1.6",
-                    marginBottom: "1rem",
-                  }}
-                >
-                  {currentQuestion}
-                </div>
-                <IonButton
-                  size="small"
-                  fill="outline"
-                  onClick={handleGetHint}
-                  disabled={loadingHint || !!hint || !!currentFeedback}
-                  style={{
-                    "--border-color": "#ffc107",
-                    "--color": "#ffc107",
-                  }}
-                >
-                  <IonIcon slot="start" icon={bulbOutline} />
-                  {loadingHint ? "Getting hint..." : hint ? "Hint shown below" : "Get a Hint"}
-                </IonButton>
-              </IonCardContent>
-            </IonCard>
+            {/* Current Question - hide while showing feedback */}
+            {!currentFeedback && (
+              <IonCard
+                style={{
+                  background: "#ffffff",
+                  border: "2px solid #0066cc",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+                }}
+              >
+                <IonCardContent>
+                  <h2
+                    style={{
+                      color: "#0066cc",
+                      fontWeight: "600",
+                      marginBottom: "1rem",
+                      fontSize: "1.2rem",
+                    }}
+                  >
+                    ❓ Question
+                  </h2>
+                  <div
+                    style={{
+                      fontSize: "1.2rem",
+                      color: "#333333",
+                      lineHeight: "1.6",
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    {currentQuestion}
+                  </div>
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    onClick={handleGetHint}
+                    disabled={loadingHint || !!hint || !!currentFeedback}
+                    style={{
+                      "--border-color": "#ffc107",
+                      "--color": "#ffc107",
+                    }}
+                  >
+                    <IonIcon slot="start" icon={bulbOutline} />
+                    {loadingHint ? "Getting hint..." : hint ? "Hint shown below" : "Get a Hint"}
+                  </IonButton>
+                </IonCardContent>
+              </IonCard>
+            )}
 
             {/* Hint Display */}
             {hint && !currentFeedback && (
@@ -836,7 +924,7 @@ const InterviewQuiz: React.FC = () => {
                 }}
               >
                 <IonCardContent>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
                   <h2
                     style={{
                       color: "#333333",
@@ -845,43 +933,96 @@ const InterviewQuiz: React.FC = () => {
                       fontSize: "1.2rem",
                     }}
                   >
-                    🎤 Your Answer
+                    {inputMode === 'voice' ? '🎤' : '⌨️'} Your Answer
                   </h2>
-                  <IonButton
-                    onClick={isListening ? stopListening : startListening}
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <IonButton
+                      size="small"
+                      fill={inputMode === 'text' ? 'solid' : 'outline'}
+                      onClick={() => {
+                        if (isListening) stopListening();
+                        setInputMode('text');
+                      }}
+                      style={{
+                        "--background": inputMode === 'text' ? "#0066cc" : "transparent",
+                        "--color": inputMode === 'text' ? "#ffffff" : "#0066cc",
+                        "--border-color": "#0066cc",
+                      }}
+                    >
+                      <IonIcon slot="start" icon={keypadOutline} />
+                      Type
+                    </IonButton>
+                    <IonButton
+                      size="small"
+                      fill={inputMode === 'voice' ? 'solid' : 'outline'}
+                      onClick={() => setInputMode('voice')}
+                      style={{
+                        "--background": inputMode === 'voice' ? "#0066cc" : "transparent",
+                        "--color": inputMode === 'voice' ? "#ffffff" : "#0066cc",
+                        "--border-color": "#0066cc",
+                      }}
+                    >
+                      <IonIcon slot="start" icon={mic} />
+                      Voice
+                    </IonButton>
+                  </div>
+                </div>
+
+                {inputMode === 'text' ? (
+                  <IonTextarea
+                    value={textAnswer}
+                    onIonInput={(e) => setTextAnswer(e.detail.value || '')}
+                    placeholder="Type your answer here..."
+                    rows={4}
                     style={{
-                      "--background": isListening ? "#dc3545" : "#28a745",
-                      "--background-hover": isListening ? "#c82333" : "#218838",
-                      "--color": "#ffffff",
-                      fontWeight: "600",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                      background: "#e9ecef",
+                      borderRadius: "8px",
+                      padding: "0.5rem",
+                      fontSize: "1rem",
+                      "--color": "#212529",
                     }}
-                  >
-                    <IonIcon slot="start" icon={isListening ? micOff : mic} />
-                    {isListening ? "Stop" : "Start Recording"}
-                  </IonButton>
-                </div>
-                <div
-                  style={{
-                    borderRadius: 8,
-                    padding: "0.75rem",
-                    minHeight: 100,
-                    fontSize: "0.9rem",
-                    whiteSpace: "pre-wrap",
-                    background: "#e9ecef",
-                    color: "#212529",
-                    fontFamily: "monospace",
-                    border: isListening ? "2px solid #28a745" : "none",
-                  }}
-                >
-                  {transcript || (
-                    <span style={{ opacity: 0.6, color: "#6c757d" }}>
-                      {isListening
-                        ? "Listening... Speak your answer."
-                        : "Click the Start Recording button above"}
-                    </span>
-                  )}
-                </div>
+                  />
+                ) : (
+                  <>
+                    <IonButton
+                      expand="block"
+                      onClick={isListening ? stopListening : startListening}
+                      style={{
+                        marginBottom: "0.5rem",
+                        "--background": isListening ? "#dc3545" : "#28a745",
+                        "--background-hover": isListening ? "#c82333" : "#218838",
+                        "--color": "#ffffff",
+                        fontWeight: "600",
+                        boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                      }}
+                    >
+                      <IonIcon slot="start" icon={isListening ? micOff : mic} />
+                      {isListening ? "Stop Recording" : "Start Recording"}
+                    </IonButton>
+                    <div
+                      style={{
+                        borderRadius: 8,
+                        padding: "0.75rem",
+                        minHeight: 100,
+                        fontSize: "0.9rem",
+                        whiteSpace: "pre-wrap",
+                        background: "#e9ecef",
+                        color: "#212529",
+                        fontFamily: "monospace",
+                        border: isListening ? "2px solid #28a745" : "1px solid #dee2e6",
+                      }}
+                    >
+                      {transcript || (
+                        <span style={{ opacity: 0.6, color: "#6c757d" }}>
+                          {isListening
+                            ? "Listening... Speak your answer."
+                            : "Tap Start Recording and speak your answer"}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 {isProcessing && (
                   <div
                     style={{
@@ -899,7 +1040,7 @@ const InterviewQuiz: React.FC = () => {
                 <IonButton
                   expand="block"
                   onClick={handleSubmitAnswer}
-                  disabled={!transcript || isProcessing || !!currentFeedback}
+                  disabled={!(inputMode === 'text' ? textAnswer : transcript) || isProcessing || !!currentFeedback}
                   style={{
                     marginTop: "1rem",
                     "--background": "#28a745",
@@ -907,7 +1048,7 @@ const InterviewQuiz: React.FC = () => {
                     "--color": "#ffffff",
                     fontWeight: "600",
                     boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    opacity: !transcript || isProcessing || !!currentFeedback ? 0.5 : 1,
+                    opacity: !(inputMode === 'text' ? textAnswer : transcript) || isProcessing || !!currentFeedback ? 0.5 : 1,
                   }}
                 >
                   {isProcessing ? "Submitting..." : "Submit Answer"}

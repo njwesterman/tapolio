@@ -14,6 +14,15 @@ import { chatbubbles, school } from "ionicons/icons";
 import Landing from "./pages/Landing";
 import Home from "./pages/Home";
 import InterviewQuiz from "./pages/InterviewQuiz";
+import Profile from "./pages/Profile";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Refunds from "./pages/Refunds";
+import { AuthProvider } from "./contexts/AuthContext";
+import AuthModal from "./components/AuthModal";
+import CreditsModal from "./components/CreditsModal";
+import CookieConsent from "./components/CookieConsent";
 
 import { setupIonicReact } from "@ionic/react";
 
@@ -31,12 +40,39 @@ import "@ionic/react/css/display.css";
 setupIonicReact();
 
 const App: React.FC = () => (
-  <IonApp>
-    <IonReactRouter>
+  <AuthProvider>
+    <IonApp>
+      <IonReactRouter>
       <IonRouterOutlet>
         {/* Landing Page */}
         <Route exact path="/">
           <Landing />
+        </Route>
+        
+        {/* Profile Page - outside tabs */}
+        <Route exact path="/profile">
+          <Profile />
+        </Route>
+        
+        {/* Payment Success Page */}
+        <Route exact path="/payment-success">
+          <PaymentSuccess />
+        </Route>
+        
+        {/* Legal Pages */}
+        <Route exact path="/privacy">
+          <Privacy />
+        </Route>
+        <Route exact path="/terms">
+          <Terms />
+        </Route>
+        <Route exact path="/refunds">
+          <Refunds />
+        </Route>
+        
+        {/* Redirect /home to app */}
+        <Route exact path="/home">
+          <Redirect to="/app/copilot" />
         </Route>
         
         {/* App with Tabs */}
@@ -78,8 +114,14 @@ const App: React.FC = () => (
           </IonTabs>
         </Route>
       </IonRouterOutlet>
+      
+      {/* Global Modals */}
+      <AuthModal />
+      <CreditsModal />
+      <CookieConsent />
     </IonReactRouter>
   </IonApp>
+</AuthProvider>
 );
 
 export default App;

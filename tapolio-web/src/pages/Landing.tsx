@@ -7,22 +7,39 @@ import {
   IonPage,
 } from "@ionic/react";
 import { mic, school, chatbubbles, sparkles, rocketOutline, logoGithub, logoLinkedin, logoTwitter, mail } from "ionicons/icons";
+import { useEffect } from "react";
 import { useHistory } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { captureReferralCode } from "../services/parse";
+import UserHeader from "../components/UserHeader";
+import Footer from "../components/Footer";
 import "./Landing.css";
 
 const Landing: React.FC = () => {
   const history = useHistory();
+  const { isAuthenticated, setShowAuthModal } = useAuth();
+
+  // Capture referral code from URL on landing
+  useEffect(() => {
+    captureReferralCode();
+  }, []);
 
   return (
     <IonPage>
       <IonContent>
-        <div
-          style={{
-            background: "#ffffff",
-            minHeight: "100vh",
-            padding: "2rem 1rem",
-          }}
-        >
+        <div className="landing-animated-bg">
+          {/* Floating orbs for subtle movement */}
+          <div className="floating-orbs">
+            <div className="orb orb-1"></div>
+            <div className="orb orb-2"></div>
+            <div className="orb orb-3"></div>
+            <div className="orb orb-4"></div>
+          </div>
+          
+          {/* User Header */}
+          <UserHeader transparent />
+          
+          <div className="landing-content">
           {/* Hero Section */}
           <div
             className="hero-section"
@@ -30,7 +47,7 @@ const Landing: React.FC = () => {
               maxWidth: "800px",
               margin: "0 auto",
               textAlign: "center",
-              paddingTop: "3rem",
+              paddingTop: "5rem", /* Account for fixed header */
             }}
           >
             <img 
@@ -57,12 +74,31 @@ const Landing: React.FC = () => {
             <p
               style={{
                 fontSize: "1.3rem",
-                marginBottom: "2rem",
+                marginBottom: "0.5rem",
                 color: "#6c757d",
                 lineHeight: "1.6",
               }}
             >
-              AI-Powered Voice Assistant for Technical Interview Practice
+              Tap into interview confidence
+            </p>
+            <p
+              style={{
+                fontSize: "1rem",
+                marginBottom: "0.5rem",
+                color: "#8c939a",
+                lineHeight: "1.5",
+              }}
+            >
+              AI-powered voice assistant for technical interview practice
+            </p>
+            <p
+              style={{
+                fontSize: "0.75rem",
+                marginBottom: "2rem",
+                color: "#adb5bd",
+              }}
+            >
+              v1.1.0
             </p>
             <IonButton
               size="large"
@@ -204,19 +240,21 @@ const Landing: React.FC = () => {
                 justifyContent: "center",
               }}
             >
-              {["React", "Angular", "Product Owner", "Product Manager", "Business Analysis", "QA Tester", "Solution Architect", "Scrum Master", "DevOps Engineer", "Data Analyst"].map((topic) => (
+              {["React", "Angular", "Java Developer", "Python Developer", "Node.js Developer", "SQL Developer", "AWS Solutions Architect", "ServiceNow Developer", "Product Owner", "Product Manager", "Business Analysis", "QA Tester", "Solution Architect", "Scrum Master", "DevOps Engineer", "Data Analyst"].map((topic) => (
                 <div
                   key={topic}
                   className="topic-pill"
+                  onClick={() => history.push(`/app/quiz?topic=${encodeURIComponent(topic)}`)}
                   style={{
-                    background: "#f8f9fa",
+                    background: "#ffffff",
                     padding: "0.75rem 1.5rem",
                     borderRadius: "50px",
-                    border: "1px solid #dee2e6",
+                    border: "1px solid #0066cc",
                     fontSize: "1rem",
                     fontWeight: "500",
-                    color: "#333333",
+                    color: "#0066cc",
                     cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(0, 102, 204, 0.1)",
                   }}
                 >
                   {topic}
@@ -321,7 +359,11 @@ const Landing: React.FC = () => {
               Get Started
             </IonButton>
           </div>
+          </div>
         </div>
+        
+        {/* Footer */}
+        <Footer />
       </IonContent>
     </IonPage>
   );
